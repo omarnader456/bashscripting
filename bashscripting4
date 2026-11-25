@@ -1,0 +1,538 @@
+
+
+#command substitution
+#Command substitution replaces a command with its output
+#standard form
+$(command)
+#or deprecated version 
+`command`.
+#Bash executes command substitution in a subshell, then uses standard output to replace the contents of the command
+#substitution with the output; trailing newlines are deleted. Embedded newlines not deleted, but may be removed
+# during word splitting. The cat command in the substitution $(cat file) may be replaced with the faster
+$( < file).
+##in old-style backquote substitution, backslash retains its meaning except when folllowed by '$', '`' , or '\'.
+#The first backquote not preceded by a backslash terminates the command substitution. Using $(command) all 
+#characters between the parenthesis make up the command; no special treatment.
+#alternate form of command substitution
+${c command ;}
+#executes command in current shell environment and captures its output, removing trailing newlines.
+#the c character following the first brace must be a space, tab, newline or '|', and the closing brace
+#must be in a position  where a reserved word may appear (must follow a command terminator like ;). 
+#Bash allows the close brace to be joined to the remaining characters in the word without being followed
+#by a shell metacharacter as reserved word would usually require.
+#Any side effects of command persist in the current environment shell after the command completes.
+#resembles executing unnamed shell functions - local variables are created when the shell function executes, and the 
+#return builtin forces the command to complete; however, the rest of the execution environment , and the positional
+#parameters are shared with the caller.
+#if | is the first character following the open brace, the construct expands to the value of the REPLY shell variable
+#after command executes, without removing any trailing newlines, and the standard output of command remains the same
+#as in the calling shell. Bash creates  an intitailly unset local variable 'REPLY' when command executes, then 
+#restores REPLY to the value it had before the command susbstitution after the command completes, like any local
+# variable.
+#example expands to '12345'; leaves hsell var X unchanged in the current execution environment
+${ local X=12345 ; echo $X; }
+#not declaring X as local would modify its value in  the current environment
+#the following doesnt require any output  to expand to '12345'.
+${| REPLY=12345; }
+#then REPLY has its value restored to what it was before execution.
+#command substitution may be nested. To nest when using backquoted form, escape the inner backquotes with backslashes
+#If substitution appears within double quotes, bash doesn't perform word splitting and filename expansion on the 
+#results.
+
+#Arithmetic Expansion
+#arithmetic expansion evaluates an arithmetic expansion and substitutes the result. 
+#format
+$(( expression ))
+#expression undergoes the same expansion as if it were in double quotes, but unescaped double quote characters in
+# expression are not treated specially and are removed. All tokens in expression undergo parameter and variable
+#expansion, command substitution, and quote removal. The result is treated as the arithmetic expression to be 
+#evaluated. The way bash handles double quotes can result in empty strings, arithmetic expansion trwats those as 
+#expressions that evaluate to 0. Arithmetic expansions may be nested.
+#If the expression is invalid, bash print a message of failure to standard error, no substitution is performed
+#, and the command associated with the expansion is not executed.
+
+#Process Substitution
+#allows a process's input or output to be referred to using a filename. It takes the form of
+<(list)
+#or
+>(list)
+#The process list is run asynchronously, and its input or output appears as a filename. 
+#The filename is passed as an argument to the current command as the result of the expansion.
+#If the >(list) form is used, writing to the file provides input for list. If the <(list) form is used, reading
+#the file obtains the output of list. Note that no space may appear between the < or > and and the left parenthesis
+#, otherwise the construct would be interpreted as a redirection.
+##process substitution is used on systems that support named pipes (FIFOS) or the /dev/fd method of naming open files
+#when available, process substitution is performed simultaneously with parameter and variable expansion, command
+# substitution, and arithmetic expansion.
+#process substitution treats input and output of a command as a temporary file path, allowing programs that expect
+#filenames as argumetns to read from or write to another running process directly.
+#it eliminates the need to create, manage, and delete temporary files on disk.
+#<(command) runs command asynchronously and exposes its standard output (stdout) as a readable file path
+##>(command) runs command asynchronously and exposes its standard input as a writable file path.
+#commands like diff or comm need two file argumetns rather than piped streams
+diff <(sort file1.txt) <(file2.txt)
+#combine >(...) with tee to send a single data stream into several commands simultaneously
+cat access.log | tee>(grep "404" > errors.log) > wc -l > line_count.txt) > /dev/null
+#standard pipes run shell variables in while loops in a subshell, causing variable changes to vanish when the loop
+# ends. Feeding a loop with < <(...) keeps the loop in the current shell. 
+count=0
+while IPS= read -r line; do
+   ((count++)
+done < <(ls -1)
+echo "total files: $count"
+
+#how it works is it sets up anonymous pipe and replaces the expressionon the command line with a file descriptor 
+#path-typically /dev/fd/63 (or a temporary named pipe/FIFO in /tmp on systems lacking /dev/fd support).Both 
+#processes run concurrently, streaming data through memory without writing to disk. 
+
+
+
+#Word splitting
+#the shell scans the results of parameter expansion, command substitution, and arithmetic expansion that did not
+#occur within double quotes for word splitting. Words that were not expanded are not split.
+#The shell treates each character of $IFS as a delimiter, and splits the results of the other expansions into 
+#fields using these characters as field terminators.
+#An IFS whitespace character is whitespace that appears in the value of IFS. Space, tab, and newline are always 
+#considered IFS whitespace, evem if they dont appear in the locale's space category.
+#If IFS is unset, word splitting behaves as if its value were <space><tab><newline>, and treats these characters as
+# IFS whitespace. IF the value of IFS is null, no word splitting occurs, but implicit null arguments are still 
+#removed.
+#word splitting begins by removing sequences of IFS whitespace characters from the beginning and end of the results 
+#of the previous expansions, then splits the remaining words.
+#If the value of IFS consists of iFS whitespace, any sequence of IFS whitespace characters delimits a field, so a 
+#field consists of characters that are not unquoted IFS whitespace,a nd null fields result only from quoting.
+#If IFS contains a non-whitespace character, then any character in the value of IFS that is not IFS whitespace
+#, along with any adjacent characters, delimits a field. This means that adjacent non-IFS-whitespace delimiters 
+#produce a null field. A sequence of iFS whitespace characters also delimits a field.  
+#Explicit null arguments ("" or '') are retained and passed to commands as empty strings. Unquoted implicit null 
+#arguments, resulting from the expansion of parameters that have no values, are removed. Expanding a parameter with no value within double quotes produces a null field, which is retained and passed to a command as an empty 
+#string. When a quoted null argument appears as part of a word whose expansion is non-null, word splitting
+#removes the null argument portion, leaving the non-null expansion. That is, the word -d'' becomes -d after word 
+#splitting and null argument removal.
+
+#Filename Expansion
+#After word splitting, unless the -f option is set, bash scans each wod for the characters '*', '?', and '['.
+#If any of these characters appears, and i not quoted, then the word is regarded as a patern, an replaced with a
+#sorted list of filenames matching the pattern, subject to the value of the GLOBSORT shell variable,
+#If no matching filenames are found, and the shell option nullglob is disabled, the word is left unchanged.
+#If the nullglob option is set, and no matches are found, the word is removed. If the failglob shell option is set,
+# and no matches are found, Bash prints an error message and does not execute the command. If the shell option 
+#nocaseglob is enabled, the match is performed without regard to the case of alphabetic characters.
+#when a pattern is used for filename expansion, the character '.' at the start of a filename or following a slash
+# must be matched explicitly, unless the shell option dotglob is set. In order to match the filenames . and  ..
+#, the pattern must begin with '.' (like '.?'), even if dotglob is set. If the globskipdots shell option is enabled,
+#the filenames . and .. never match, even if the pattern begins with a '.'. When not matching filenames, the '.' 
+#character is not treated specially.
+#When matching a filename, the slash character must always be matched explicitly by a slash in the pattern, but in
+# other matching contexts it can be matched by a special pattern character as described below.
+#shopt provides description of the nocaseglob, nullglob, globskipdots, failglob, and dotglob options. 
+#GLOBIGNORE shell variable may be used to restrict the set of file names matching a pattern. If GLOBIGNORE is set,
+#then matching filenames that also match the patterns in GLOBIGNORE are removed from the list of matches. If 
+#nocaseglob option is set, the pattern matching in GLOBIGNORE is performed without regard to case. The filenames . 
+#and .. are always ignored when GLOBIGNORE is set and not null. However, setting GLOBIGNORE to a non-null value has
+#the effect of enabling the dotglob shell option, so all other filenames beginning with a '.' match. To get the old
+# behavior of ignoring filenames beginning with a '.' make '.*' one of the patterns in GLOBIGNORE. The dotglob 
+#option is disabled when GLOBIGNORE is unset. The GLOBIGNORE pattern matching honors the setting of the extglob 
+#shell option. 
+#The GLOBSORT shell variable controls how the results of pathname expansion are sorted.
+
+#Pattern Matching
+#characters that appear appear in a pattern, other than the special pattern characters, match themselves.
+#The NUL character can't appear in a pattern. Backslashes escape the following character; escaping backslashes are 
+#discarded when matching. The special pattern characters must be quoted if they are to be matched literally.
+*
+#matches any string, including the null string. With globstar shell option enabled, and * is used in a filename
+#expansion context, two adjacent *'s match all files and zero or more directories and subdirectories. 
+#If fllowed by a /, two adjacent *'s match only directories and subdirectories.
+?
+#matches any single character
+[...]
+#Matches any of the characters enclosed between []. This is called bracket expression and matches a single character
+#A pair of characters separated by a hyphen denotes a range expression; any character between the two two characters
+#,inclusive, using the current locale's collating sequence and charset, matches. If the first character after [ is
+# a ! or ^, then any character not within the range  matches. To match a hyphen, include it as the first or last 
+#character in the set. To match a ], include it as the first character in the set.
+#the sorting order of characters in range expressions, and the characters included in the range, are determined
+#by the current locale and the values of the LC_COLLATE and LC_ALL shell variables, if set.
+#Example, in the C locale, [a-dx-z] is the same as [abcdxyz]. Many locales sort characters in dictionary order, and
+# in these locales [a-dx-z] is typically equivalen to [abcdxyz]; it might be [aBbCcDdxYyZz]. To obtain the 
+#traditional interpretation of ranges in bracket expressions, you can force the use of the C locale by setting the
+#LC_COLLATE or LC_ALL environment variables to the value 'C', or enable globascii ranges shell option.
+#inside a bracket expression, character classes can be specified with [:class:]. Classses can be :
+alnum
+alpha
+ascii blank
+cntrl
+digit
+graph
+lower
+print
+punct
+space
+upper
+word
+xdigit
+#character classes match any character belonging to the class. The word character classs matches letter, digits, 
+#and _ 
+#example, the following matches any character belonging to the space class in the current locale, then any upper
+# case letter or '!', a dot, and finally any lower case letter or a hyphen.
+[[:space:]][[:upper:]!].[-[:lower:]]
+#In bracket expressions, an equivalence class can be specified using the syntax [=c=], which matches all 
+#characters with the same collation weight (difined by the current locale) as the character c.
+#within a bracket expression, the syntax [.symbol.] matches the collating symbol symbol.
+#enabling the extglob shell option using shopt builtin allows the shell to recognize several extended pattern 
+#matching operators. A pattern-list is a list of one or more patterns separated by a |. When matching filenames, 
+#the dotglob shell option determines the set of filenames that are tested. Composite patterns may be formed using
+#one or more of the following sub-patterns: 
+$(pattern-list)
+#matches zero or one occurrence of the given patterns.
+*(pattern-list)
+#matches zero or more occurrences of the given patttern
++(pattern-list)
+#matchesone or more occurrences of the given pattern
+@(pattern-list)
+#matches on of the given patterns
+!(pattern-list)
+#matches anything except the given patterns
+
+#The extglob option changes the behavior of the parser, since the parentheses are normally treated as operators with 
+#syntactic meaning. To ensure that extended matching patterns are parsed correctly, make sure that extglob is 
+#enabled before parsing constructs containing the patterns, including shell functions and command substitutions.
+
+#for filename matching, dotglob shell option determines the set of filenames that are tested: enabling dotglob amkes 
+#the set of filenames include all files beginning with '.', but the filenames . and .. must be matched by a pattern
+#or sub-pattern that begins with a dot; when it is disabled, the set does not include any filenames beginning with 
+#'.' unless the pattern or sub-pattern begins with a '.'. If the globskipdots shell option is enabled, the filenames
+# . and .. never appear in the set. As above, '.' only has a special meaning when matching filenames.
+
+#Quote removal
+#After the preceding expansions, all unquoted occurrences of the characters '\', ‘'’, and '"' that did not result 
+#from one of the above expansions are removed
+
+         
+#Redirections
+#Before command execution, its input and output may be redirected using a special notation interpreted by the shell
+#Redirection allows a command's file handle to be duplicated, opened, closed, refer to a different file, and change
+# the files the command reads from or writes to. Alongside the exec builtin, redirections modifyfile handles in the
+#current shell execution environment. Redirections are processed int he order they appear, from left to right.
+#The following redirection operators may precede or appear anywhere within a simple command or  may follow a command
+#Each redirection that may be preceded by a file descriptor number may instead be preceded by a word of the form 
+#{varname}. In this case, for each redirection operator except >&- and <&-, the shell allocates a file descriptor
+# greater than or equal to 10 and assigns it to {varname}. if {varname} preceded >&- or <&-, the value of 
+#varname defines the file descriptor to close. If {varname} is supplied, the redirection persists beyond the scope
+# of the command, which allows the shell programmer to manage the file descriptor's lifetime manually without using
+#the exec builtin. The varredir_close shell option manages this behavior. 
+#If the file descriptor number is ommitted, and the first character of the redirection is <, than the descriptor 
+#referes to standard input (file descriptor 0). If the first character of the redirection operator is >, the
+#redirection refers to the standard output (file descriptor 1).
+
+#the word following the redirection operator in the following descriptions, unless otherwise noted, is subjected
+#to brace expansion, tilde expansion, parameter and variable expansion, command substitution, arithmetic expansion, 
+#quote removal, filename expansion, and word splitting. If it expands to more than one word, Bash reports an error.
+
+ls > dirlist 2>&1
+#redirects standard output and standard error to the file dirlist
+
+ls 2>&1 > dirlist
+#directs only the standard output to the file dirlist, becuase the standard error was made a copy of the standard
+#output before the standard output was redirected to dirlist.
+#bash handles several filenames specially when they are used in redirections. If the os on which bash is running 
+#provides these special files, bash uses them, else it emulates them internally with the behavior described below:
+
+/dev/fd/fd
+#if fd is a valid integer, duplicate file descriptor fd
+/dev/stdin
+#file descriptor 0 is duplicated.
+/dev/stdout
+#file descriptor 1 is duplicated   
+/dev/stderr
+#file descriptor 2 is duplicated
+
+/dev/tcp/host/port
+#if hostname or ip address is valid, and port is an integer port number or service name, bash attempts to open
+#the corresponding tcp socket
+
+/dev/udp/host/port
+#if host is a valid hostname or ipaddress, and port is aninteger port number or service name, bash attempts to open
+#the corresponding UDP socket.
+
+#a failure to open or create a file causes the redirection to fail
+#care should be taken when using file descriptors greater than 9, as they may conflict with file descriptors the 
+#shell uses internally
+
+#Redirecting Input
+#redirecting input opens the file whose name results from the expansion of word for reading on file descriptorn, or
+# the standard input (file descriptor 0) if n is not specified
+#format
+[n]<word
+
+#redirecting output
+#Redirecting output opens the file whose name results from the expansion of word for writing on file descriptor n, 
+#or the the standard output (file descriptor 1) if n is not specified. If the file does not exist it is created;
+# if it does exist it is truncated to zero size.
+
+#The generalformat for redirecting output is:
+[n]>[|]word
+#If the redirection operator is '>', and the noclobber option to the set builtin command has been enabled, the 
+#redirection fails if the file whose name results from the expansion of word exists and is a regular file. If the
+# redirection operator is '>|', or the redirection operator is '>' and the noclobber option to the set builtin
+#is not enabled, Bash attempts the redirection even if the file named by word exists.
+
+#appending redirected output
+#redirecting output in this fashion opens the file whose name results from the expansion of word for appending on 
+#file descriptor n, or the standard output (file descriptor 1) if n is not specified. Creates the file if it doesn't
+#exist
+[n]>>word
+
+#Redirecting Standard Output and Standard Error
+#To redirect standard error and standard output to the file whose name is the expansion of word. 
+#two formats available
+&>word
+>&word
+
+#semantically equivalent to
+>word 2>&1
+#using the second form, word can't expand to a number or - because other redirection operators apply for compatibility
+#reasons.
+
+#Appending Standard Output and Standard Error
+#appending standard output and standard error to a file whose name is the expansion of word
+&>>word
+#this is equivalent to 
+>>word 2>&1
+
+#Here Documents
+#this type of redirection instructs the shell to read from the current source until it reads a line containing
+#only delimiter (with no trailing blanks). All of the lines read up to that point then become the standard input
+# (or file descriptor n if n is specified) for a command. 
+[n]<<[-]word
+        here-document
+delimeter
+
+#shell doesnt perform parameter and variable expansion, command substitution, arithmetic expansion, or filename 
+#expansion on word. 
+#if any part of word is quoted, the delimiter is the result of quote removal on word, and the lines in the here-
+#document are not expanded. If word is unquoted, delimiter is word itself, and the ehre-document text is treated 
+#similarly to a double-quoted string: all lines of the here-document are subjected to parameter expansion,
+#command substitution, and arithmetic expansion, the character sequence \newline is treated literally, and '\' must
+#be used to quote the characters '\', '$', and '`'; however, double quote characters have no special meaning.
+#If the redirection operator is '<<-', the shell strips leading tab characters from input lines and the line
+#containing delimiter. This allows here-documents within shell scripts to be indented in a natural fashion.
+
+#If the delimiter is not quoted, the \<newline> sequence is treated as a line continuation: the two lines
+#are joined and the backslash-newline is removed. This happens while reading the here-document, before the check
+#for the ending delimiter, so joined lines can form the end delimiter. 
+
+#Here Strings
+#variant of here-document
+[n]<<< word
+#word underoes tilde expansion, parameter and variable expansion, command substitution, arithmetic expansion, and
+# quote removal. Filename expansion and word splitting are not performed. The result is supplied as a single string
+#, with a newline appended, to the command on its standard input (or file descriptor n if n is specified).
+
+#Duplicating File Descriptors
+[n]<&word
+#duplicates input file descriptors. If word expands to one or more digits, file descriptor n is made to be a copy
+#of that file descriptor. It is a redirection error if the digits in word do not specify a file descriptor. It is a
+#redirection error if the digits in word do not specify a file descriptor open for input. If word evaluates to '-',
+# file descriptor n is closed. If n is not specified, this uses the standard input (file descriptor 0).
+[n]>&word
+#used to duplicate output file descriptors. If n is not specified, this uses the standard output (file descriptor 1)
+#It is a redirection error if the digits in word do not specify a file descriptor open for output. if word evaluates
+#to '-', file descriptor n is closed. As a special case, if n is omitted, and word does not expand to one or more 
+#digits or '-', this redirects the standard output and standard error as described previously.   
+
+#moving file descriptors
+[n]<&digit-
+#moves file descriptor digit to file descriptorn, or standard input  if n is not specified, digit is closed after
+# being duplicated to n.
+[n]>$digit-
+#moves the file descriptor digit to file descriptor n, or standard output if n is not specified.
+
+#Opening file descriptors for reading and writing
+[n]<>word
+#opens the file whose name is the expansion of word for both reading and writing on file descriptor n, or on file
+#descriptor 0 if n is not specified. If the file does not exist, it is created. 
+
+#Executing Commands
+
+#simple command expansion
+#When shell executes a simple command, it performs the following expansions, assignments, and redirection, from left
+# to right, in the following order.
+
+1- The words that the parser has marked as variable asssignments (those preceding the command name) and redirections
+are saved for later processing
+2- The words that are not variable assignments or redirections are expanded. If any words remain after expansion,
+the first word is taken to be the name of the command and the remaining words are the arguments.
+3- Redirections are performed 
+4- text after = in each variable assignment undergoes tilde expansion, parameter expansion, command substitution, 
+arithmetic expansion, and quote removal before being assigned to the variable.
+
+#If no command name results, the variable assignment affect the current shell environment. In the case of such a 
+#command (one that consists only of assignment statements and redirections), assignment statements are performed 
+#before redirections. Otherwise, the variables are added to the environment of the executed command and do not 
+#affect the current shell environment. If any of the assignments attempts to assign a value to a readonly variable,
+#an error occurs, and the command exits with a non-zero status.
+
+#If no command name results, redirection are rperformed, but has no effect on the current shell envioronmen.
+#A redirection error causes the command to exit with a non-zero status.
+
+#If there is a command name left after expansion, execution proceeds as described below. Otherwise, the command exits
+#If one of the expansiosn contained a command substitution, the exit status of the command is the exit status of the
+#last command substitution performed. If there were no command substitutions, the command exits with a zero-sytatus.
+
+#command searcha nd execution
+#after a command is split into words, if it results in a simple command and an optional list of arguments, the 
+#shell performs the following actions
+1- If the command name contains no slashes, the shell attempts to locate it. If there exists a shell function by
+ that name, that function is invoked as described in shell functions.
+2- If the name doesn't match a function, the shell searches for it in the list of shell builtins. If a match 
+is found, the builtin is invoked
+3- If the name is neither a shell function nor a builtin, and contains no slashes, Bash searches each element of
+$PATH for a directory containing an executable file by that name. Bash uses a hash table to remember the full
+pathnames of executable files to avoid multiple PATH searches. Bash performs a full search of the directories
+in $PATH only if the command is not found in the hash table. If the search is unsuccessful, the shell searches for
+a defined shell function named command_not_found_handle. If that function exists, it is invoked in a separate execution environment with the original command and the original command's argumetns as its argumetns, and the 
+function's exit status becomes the exit status of that subshell.  If that function is not deined, the shell prints
+an error message and returns an exit status of 127.
+4- If the search is successful, or if the command name contains one or more slashes, the shell executes the 
+named program in a separate execution environment. Argument 0 is set to the name given, and the remaining arguments
+to the command to the command are set to the arguments supplied, if any. 
+5- If this execution fails because the file is not in executable format, and the file is not a directory, it is
+assumed to be a shell script, a file containing shell commands, and the shell executes it as described in shell 
+scripts.   
+6- If the command was not begun asynchronously, the shell waits for the command to complete and collects its exit 
+status
+
+#Command Execution Environment
+#The shell has an execution environment, which consists of the following:
+- open files inherited by the shell at invocation, as modified by redirections supplied to the exec builtin
+- The current working directory as set by cd, pushd, or popd, or inherited by the shell at invocation
+- The file creation mode mask as set by umask or inherited from the shell's parent
+- current traps set by trap
+- shell parameters that are set by variable assignment or with set or inherited from the shell's parent in the
+ environment
+- Shell functions defined during execution or inherited from the shell's parent in the environment
+- Options enabled at invocation (either by default or with command-line arguments) or by set
+- Options enabled by shopt
+- shell aliases defined with alias
+- Various process IDs, including those of background jobs, the value of $$, and the value of $PPID
+
+#When a simple command other than a builtin or shell function is to be executed, it is invoked in a separate
+#execution environment that consists of the following. Unless otherwise noted, the values are inherited from the 
+#shell
+- The shells's open files, plus any modifications and additions specified by the redirection to the command
+- The current working directory
+- The file creation mode mask
+- Shell variables and functions marked for export, along with variables exported for the command, passed in the 
+environment
+- Traps caught by the shell are reset to the values inherited from the shell's parent, and traps ignored by the 
+shell are ignored.
+
+#command invoked int his separate environment can't affect the shell's execution environment
+#A subshell is a copy of the shell process
+#Command substitution, commands grouped withparentheses, and asynchronous commands are invoked in a subshell 
+#environment that is a duplicate of the shell environment, except that traps caught by the shell are reset to the
+#values that the shell inherited from its parent invocation. Builtin commands that are invoked as part of a 
+#pipeline, except possibly in the last element depending on the value of the lastpipe shell option( shopt builtin)
+#, are also executed in a subshell environment. Changes made to the subshell environment cannot affect the 
+#shell's execution environment.
+
+#When the shell is in pOSIX mode, subshells spawned to execute command substitutions inherit the value of the -e
+#option from the parent shell. When not in POSIX mode, BASH clears the -e option in such subshells. See 
+#the description of the inherit_errexit shell option for how to control this behavior when not in POSIX mode
+
+#if command is followed by a '&' and job control is not active, the default standard input for the command
+#is the empty file /dev/null. Otherwise, the invoked command inherits the file descriptors of the calling shell 
+#as modified by redirections.
+
+#Environment
+#when programs are invoked, they are given an array of strings called the environment. This is a list of name-value
+#pairs, of the form name=value.
+
+#Bash provides several ways to manipulate the environment. On invocation, the shell scans its own environment
+# and creates a parameter for each name found, automatically marking it for export to child processes. Executed 
+#commands inherit the environment. The export, 'declare -x', and unset commands modify the environment by adding 
+#and deleting parameters and functions. If the value of a parameter in the environment is modified, the new value
+#automatically becomes part of the environment, replacing the old. The environment inherited by any executed
+#command consists of the shell's initial environment, whose values may be modified in the shell, less any pairs
+#removed by the unset and 'export -n' commands, plus any additions via the export and 'declare -x' commands.
+#If any parameter assignment statements, as described in shell parameters, appear before a simple command,
+#the variable assignments are part of that command's environment for as long as it executes. 
+#These assignment statements affect only the environment seen by that command. If these assignments precede
+#a call to a shell function, the variables are local to the function and exported to that function's children
+
+#if the -k option is set, then all paramete assignments are placed in the environment for a command, not just
+#those that precede the command name.
+
+# when bash invokes ane external command, the variable '$_' is set to the full pathname of the command and passed
+#to that command in its environment.
+
+#Exit Status
+ 
+The exit status of an executed command is the value returned by the waitpid system call or equivalent function. Exit statuses fall between 0 and 255, though, as explained below, the shell may use values above 125 specially. Exit statuses from shell builtins and compound commands are also limited to this range. Under certain circumstances, the shell will use special values to indicate specific failure modes.
+
+For the shell’s purposes, a command which exits with a zero exit status has succeeded. So while an exit status of zero indicates success, a non-zero exit status indicates failure. This seemingly counter-intuitive scheme is used so there is one well-defined way to indicate success and a variety of ways to indicate various failure modes.
+
+When a command terminates on a fatal signal whose number is N, Bash uses the value 128+N as the exit status.
+
+If a command is not found, the child process created to execute it returns a status of 127. If a command is found but is not executable, the return status is 126.
+
+If a command fails because of an error during expansion or redirection, the exit status is greater than zero.
+
+The exit status is used by the Bash conditional commands (see Conditional Constructs) and some of the list constructs (see Lists of Commands).
+
+All of the Bash builtins return an exit status of zero if they succeed and a non-zero status on failure, so they may be used by the conditional and list constructs. All builtins return an exit status of 2 to indicate incorrect usage, generally invalid options or missing arguments. 
+
+#BAsh returns the exit status of the last command executed, unless a syntax error occurred, in which case it exits
+# with a non-zero value. see exit builtin command.
+
+#Signals
+
+When Bash is interactive, in the absence of any traps, it ignores SIGTERM (so that ‘kill 0’ does not kill an interactive shell), and catches and handles SIGINT (so that the wait builtin is interruptible). When Bash receives a SIGINT, it breaks out of any executing loops. In all cases, Bash ignores SIGQUIT. If job control is in effect (see Job Control), Bash ignores SIGTTIN, SIGTTOU, and SIGTSTP.
+
+The trap builtin modifies the shell’s signal handling, as described below (see Bourne Shell Builtins.
+
+Non-builtin commands Bash executes have signal handlers set to the values inherited by the shell from its parent, unless trap sets them to be ignored, in which case the child process will ignore them as well. When job control is not in effect, asynchronous commands ignore SIGINT and SIGQUIT in addition to these inherited handlers. Commands run as a result of command substitution ignore the keyboard-generated job control signals SIGTTIN, SIGTTOU, and SIGTSTP.
+
+The shell exits by default upon receipt of a SIGHUP. Before exiting, an interactive shell resends the SIGHUP to all jobs, running or stopped. The shell sends SIGCONT to stopped jobs to ensure that they receive the SIGHUP (See Job Control, for more information about running and stopped jobs). To prevent the shell from sending the SIGHUP signal to a particular job, remove it from the jobs table with the disown builtin (see Job Control Builtins) or mark it not to receive SIGHUP using disown -h.
+
+If the huponexit shell option has been set using shopt (see The Shopt Builtin), Bash sends a SIGHUP to all jobs when an interactive login shell exits.
+
+If Bash is waiting for a command to complete and receives a signal for which a trap has been set, it will not execute the trap until the command completes. If Bash is waiting for an asynchronous command via the wait builtin, and it receives a signal for which a trap has been set, the wait builtin will return immediately with an exit status greater than 128, immediately after which the shell executes the trap.
+
+When job control is not enabled, and Bash is waiting for a foreground command to complete, the shell receives keyboard-generated signals such as SIGINT (usually generated by ‘^C’) that users commonly intend to send to that command. This happens because the shell and the command are in the same process group as the terminal, and ‘^C’ sends SIGINT to all processes in that process group. Since Bash does not enable job control by default when the shell is not interactive, this scenario is most common in non-interactive shells.
+
+When job control is enabled, and Bash is waiting for a foreground command to complete, the shell does not receive keyboard-generated signals, because it is not in the same process group as the terminal. This scenario is most common in interactive shells, where Bash attempts to enable job control by default. See Job Control, for a more in-depth discussion of process groups.
+
+When job control is not enabled, and Bash receives SIGINT while waiting for a foreground command, it waits until that foreground command terminates and then decides what to do about the SIGINT:
+
+    If the command terminates due to the SIGINT, Bash concludes that the user meant to send the SIGINT to the shell as well, and acts on the SIGINT (e.g., by running a SIGINT trap, exiting a non-interactive shell, or returning to the top level to read a new command).
+    If the command does not terminate due to SIGINT, the program handled the SIGINT itself and did not treat it as a fatal signal. In that case, Bash does not treat SIGINT as a fatal signal, either, instead assuming that the SIGINT was used as part of the program’s normal operation (e.g., emacs uses it to abort editing commands) or deliberately discarded. However, Bash will run any trap set on SIGINT, as it does with any other trapped signal it receives while it is waiting for the foreground command to complete, for compatibility. 
+
+When job control is enabled, Bash does not receive keyboard-generated signals such as SIGINT while it is waiting for a foreground command. An interactive shell does not pay attention to the SIGINT, even if the foreground command terminates as a result, other than noting its exit status. If the shell is not interactive, and the foreground command terminates due to the SIGINT, Bash pretends it received the SIGINT itself (scenario 1 above), for compatibility. 
+
+
+#Shell Scripts
+
+A shell script is a text file containing shell commands. When such a file is used as the first non-option argument when invoking Bash, and neither the -c nor -s option is supplied (see Invoking Bash), Bash reads and executes commands from the file, then exits. This mode of operation creates a non-interactive shell. If the filename does not contain any slashes, the shell first searches for the file in the current directory, and looks in the directories in $PATH if not found there.
+
+Bash tries to determine whether the file is a text file or a binary, and will not execute files it determines to be binaries.
+
+When Bash runs a shell script, it sets the special parameter 0 to the name of the file, rather than the name of the shell, and the positional parameters are set to the remaining arguments, if any are given. If no additional arguments are supplied, the positional parameters are unset.
+
+A shell script may be made executable by using the chmod command to turn on the execute bit. When Bash finds such a file while searching the $PATH for a command, it creates a new instance of itself to execute it. In other words, executing
+
+filename arguments
+
+is equivalent to executing
+
+bash filename arguments
+
+if filename is an executable shell script. This subshell reinitializes itself, so that the effect is as if a new shell had been invoked to interpret the script, with the exception that the locations of commands remembered by the parent (see the description of hash in Bourne Shell Builtins) are retained by the child.
+
+The GNU operating system, and most versions of Unix, make this a part of the operating system’s command execution mechanism. If the first line of a script begins with the two characters ‘#!’, the remainder of the line specifies an interpreter for the program and, depending on the operating system, one or more optional arguments for that interpreter. Thus, you can specify Bash, awk, Perl, or some other interpreter and write the rest of the script file in that language.
+
+The arguments to the interpreter consist of one or more optional arguments following the interpreter name on the first line of the script file, followed by the name of the script file, followed by the rest of the arguments supplied to the script. The details of how the interpreter line is split into an interpreter name and a set of arguments vary across systems. Bash will perform this action on operating systems that do not handle it themselves. Note that some older versions of Unix limit the interpreter name and a single argument to a maximum of 32 characters, so it’s not portable to assume that using more than one argument will work.
+
+Bash scripts often begin with #! /bin/bash (assuming that Bash has been installed in /bin), since this ensures that Bash will be used to interpret the script, even if it is executed under another shell. It’s a common idiom to use env to find bash even if it’s been installed in another directory: #!/usr/bin/env bash will find the first occurrence of bash in $PATH. 
